@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+
+        <record model="ir.ui.view" id="view_oe_autobackup_files_tree">
+            <field name="name">oe.autobackup.file.tree</field>
+            <field name="model">oe.autobackup.file</field>
+            <field name="arch" type="xml">
+                <tree string="Files" toolbar="1">
+                    <field name="full_name" />
+                    <field name="create_time"/>
+                    <field name="size" />
+                </tree>
+            </field>
+        </record> 
+
+        <record model="ir.ui.view" id="view_oe_autobackup_tree">
+            <field name="name">oe.autobackup.tree</field>
+            <field name="model">oe.autobackup</field>
+            <field name="arch" type="xml">
+                <tree string="Autobackups" toolbar="1">
+                    <field name="name" />
+                    <field name="password" />
+                    <field name="last_run_date" />
+                    <field name="frequency"/>
+                    <field name="frequency_type" />
+                    <field name="history_count"/>
+                    <field name="folder"/>
+                    <field name="copy_folder"/>
+                </tree>
+            </field>
+        </record> 
+
+        <record id="view_oe_autobackup_view" model="ir.ui.view">
+            <field name="name">oe.autobackup.form</field>
+            <field name="model">oe.autobackup</field>
+            <field name="arch" type="xml">
+                <form string="Autobackup" version="7.0" >
+                    <header>
+                        <group>
+                            <button name="run" string="Execute" type="object" class="oe_highlight"/> or
+                        </group>
+                    </header>
+                    <group col="4">
+                        <field name="name" />
+                        <field name="password" />
+                        <field name="frequency" />
+                        <field name="frequency_type" />
+                        <field name="history_count" colspan="4"/>
+                        <field name="last_run_date" />
+                        <field name="folder" invisible="1"/>
+                        <field name="copy_folder" invisible="1"/>
+                    </group>
+                    <group col="2">
+                        <field name="backup_files" />
+                    </group>
+                </form>
+            </field>
+        </record>
+ 
+        <record id="view_oe_autobackup_config_view" model="ir.ui.view">
+            <field name="name">Autobackup Configurations</field>
+            <field name="model">oe.autobackup.config</field>
+            <field name="arch" type="xml">
+                <form string="Autobackup Configuration" version="7.0" class="oe_form_configuration">
+                    <header>
+                        <button string="Apply" type="object" name="execute" class="oe_highlight"/>
+                        or
+                        <button string="Cancel" type="object" name="cancel" class="oe_link"/>
+                    </header>
+                    <group col="4">
+                        <field name="password" />
+                        <field name="history_count" />
+                        <field name="frequency" />
+                        <field name="frequency_type" />
+                        <field name="folder" />
+                        <field name="copy_folder" />
+                    </group>
+                    <group col="2" string="Backups Jobs">
+                        <field name="backup_ids" readonly="1"/>
+                    </group>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_oe_autobackup_config" model="ir.actions.act_window">
+            <field name="name">Autobackup Configurations</field>
+            <field name="res_model">oe.autobackup.config</field>
+            <field name="view_id" ref="view_oe_autobackup_config_view"/>
+            <field name="view_mode">form</field>
+            <field name="target">inline</field>
+        </record>
+
+        <record id="action_oe_autobackup" model="ir.actions.act_window">
+            <field name="name">Autobackups</field>
+            <field name="res_model">oe.autobackup</field>
+            <field name="view_type">form</field>
+            <field name="view_mode">tree,form</field>
+        </record>
+
+        <menuitem id="base.menu_oe_autobackup" name="Autobackup" parent="base.menu_config" sequence="16" />
+        <menuitem id="base.menu_oe_autobackup_config" name="Configuration" parent="base.menu_oe_autobackup" sequence="1" action="action_oe_autobackup_config"/>
+        <menuitem id="base.menu_oe_autobackup_jobs" name="Backup Jobs" parent="base.menu_oe_autobackup" sequence="2" action="action_oe_autobackup"/>
+    </data>
+</openerp>
+<!-- vim:fenc=utf-8
+  -->
