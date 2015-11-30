@@ -8,10 +8,14 @@ The module adds the Autobackups entry under Settings => Configuration.
 ### Configuration
 
 Defines the shared parameters for each backup job.
+
 Mandatories:
+
 - Main Backup Folder: 
     A valid path on the server used to store backups files
+
 Optionals:
+
 - External Last Backup Folder:  
     A valid path on the server used to store only the last backup (planned scp/ftp support)
 - Backup History: 
