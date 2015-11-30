@@ -31,7 +31,6 @@ class oe_autobackup_config(osv.TransientModel):
         'frequency': fields.integer("Hourly Backup Frequency"),
         'frequency_type': fields.selection( freq_type, 'Frequency Unit'),
         'history_count': fields.integer("Backup History"),
-        'password': fields.char('Database Password'),
         'folder': fields.char('Main Backup Folder', required=True),
         'copy_folder': fields.char('External Last Backup Folder'),
         'active': fields.boolean("Active"),
@@ -43,11 +42,6 @@ class oe_autobackup_config(osv.TransientModel):
         'frequency': 1,
         'frequency_type': 'hourly',
     }
-
-    def set_password(self, cr, uid, ids, context=None):
-        config = self.browse(cr, uid, ids)[0]
-        self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'password', config.password)
-        return True
 
     def set_frequency(self, cr, uid, ids, context=None):
         config = self.browse(cr, uid, ids)[0]
@@ -77,12 +71,11 @@ class oe_autobackup_config(osv.TransientModel):
         self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'copy_folder', config.copy_folder)
         return True
 
-
     def default_get(self, cr, uid, fields, context=None):
         res = super(oe_autobackup_config, self).default_get(cr, uid, fields, context=context)
         res.update(self._defaults)
         ir_values_obj = self.pool.get('ir.values')
-        for field, ftype in [("frequency", int), ("history_count", int), ("folder", str), ("copy_folder", str), ('password', str)]:
+        for field, ftype in [("frequency", int), ("history_count", int), ("folder", str), ("copy_folder", str)]:
             res[field] = ir_values_obj.get_default(cr, uid, 'oe.autobackup', field)
         res['backup_ids'] = self.pool.get('oe.autobackup').search(cr, uid, [])
         return res
@@ -142,7 +135,6 @@ class oe_autobackup(osv.Model):
     _rec_name = "name"
     _columns = {
         'name': fields.char('Name', required=True),
-        'password': fields.char('Database Password'),
         'frequency': fields.integer("Backup Frequency", required=True),
         'frequency_type': fields.selection( freq_type, 'Frequency Unit', required=True),
         'history_count': fields.integer("Backup History"),
@@ -239,7 +231,7 @@ class oe_autobackup(osv.Model):
                     "%Y-%m-%d_%H-%M-%SZ")
                 }
         dump_filename = os.path.join(config.folder, config.name, filename)
-        data = self.do_dump(cr.dbname, config.password)
+        data = self.do_dump(cr.dbname, tools.config['admin_passwd'])
         _logger.info('Scheduled Autobackup %s successful: %s', (config.name, cr.dbname))
         fp = open(dump_filename, "w")
         fp.write(data)
@@ -248,7 +240,8 @@ class oe_autobackup(osv.Model):
         if config.copy_folder:
             copy_filename = os.path.join(config.copy_folder, config.name, '%s.last.dump' % cr.dbname)
             shutil.copy(dump_filename, copy_filename)
-        self._rotate(os.path.join(config.folder, config.name), config.history_count)
+        if config.history_count:
+            self._rotate(os.path.join(config.folder, config.name), config.history_count)
         return True
 
     def do_dump(self, db_name, password):
