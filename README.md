@@ -7,7 +7,7 @@ The module adds the Autobackups entry under Settings => Configuration.
 
 ### Configuration
 
-Configuration defines the shared parameters for each backup job.
+Defines the shared parameters for each backup job.
 Mandatories:
 - Main Backup Folder: 
     A valid path on the server used to store backups files
@@ -23,5 +23,4 @@ Optionals:
 
 ### Backup Jobs
 
-Backup Jobs:
-  Definition and management of active backups
+Definition and management of active backups
