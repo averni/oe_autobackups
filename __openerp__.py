@@ -9,7 +9,7 @@ Auto Backup Manager
 """,
 	'author': 'Antonio Verni (me.verni@gmail.com)',
         'website': 'www.linkedin.com/in/averni',
-	'license': 'MIT',
+	#'license': 'MIT',
 	'depends': [],
 	'data': [
             'views/oe_autobackup_view.xml',
