@@ -14,49 +14,43 @@ import openerp.tools as tools
 from openerp.tools.translate import _
 import datetime
 import subprocess
+from urlparse import urlparse
 import os
 import glob
 import shutil
 import logging
 
+try:
+    import paramiko
+    paramiko_installed = True
+except:
+    # ssh/sftp support disabled
+    paramiko_installed = False
+try:
+    from ftplib import FTP
+    ftplib_installed = True
+except:
+    # ftp support disabled
+    ftplib_installed = False
+
 _logger = logging.getLogger(__name__)
 
-freq_type = [('minutes', 'Minutes'), ('hours', 'Hours'), ('work_days','Work Days'), ('days', 'Days'),('weeks', 'Weeks'), ('months', 'Months')]
+FREQ_TYPE = [('minutes', 'Minutes'), ('hours', 'Hours'), ('work_days','Work Days'), ('days', 'Days'),('weeks', 'Weeks'), ('months', 'Months')]
+NOTIFICATION_MODES = [('failed', 'Failed'), ('always', 'Always')]
 
 class oe_autobackup_config(osv.TransientModel):
     _name = "oe.autobackup.config"
     _inherit = 'res.config.settings'
     _description = ""
     _columns = {
-        'frequency': fields.integer("Hourly Backup Frequency"),
-        'frequency_type': fields.selection( freq_type, 'Frequency Unit'),
-        'history_count': fields.integer("Backup History"),
         'folder': fields.char('Main Backup Folder', required=True),
         'copy_folder': fields.char('External Last Backup Folder'),
+        'user_id': fields.many2one('res.users', string='Notify to', ondelete='restrict'),
+        'notification_mode':fields.selection(NOTIFICATION_MODES, "Notification Mode"),
         'active': fields.boolean("Active"),
         'backup_ids': fields.many2many("oe.autobackup", "autobackup_config_autobackup_rel",
             'conf_id', 'backup_id', "Backups"),
     }
-    _defaults = {
-        'history_count': 5,
-        'frequency': 1,
-        'frequency_type': 'hourly',
-    }
-
-    def set_frequency(self, cr, uid, ids, context=None):
-        config = self.browse(cr, uid, ids)[0]
-        self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'frequency', config.frequency)
-        return True
-
-    def set_frequency_type(self, cr, uid, ids, context=None):
-        config = self.browse(cr, uid, ids)[0]
-        self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'frequency_type', config.frequency_type)
-        return True
-
-    def set_history_count(self, cr, uid, ids, context=None):
-        config = self.browse(cr, uid, ids)[0]
-        self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'history_count', config.history_count)
-        return True
 
     def set_folder(self, cr, uid, ids, context=None):
         config = self.browse(cr, uid, ids)[0]
@@ -64,18 +58,30 @@ class oe_autobackup_config(osv.TransientModel):
             raise osv.except_osv(_('Error!'),
                     _('Path %s not found. Please set a valid folder' % config.folder) )
         self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'folder', config.folder)
+        self.pool.get('ir.config_parameter').set_param(cr, uid, 'oe.autobackup.folder', config.folder)
         return True
 
     def set_copy_folder(self, cr, uid, ids, context=None):
         config = self.browse(cr, uid, ids)[0]
         self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'copy_folder', config.copy_folder)
+        self.pool.get('ir.config_parameter').set_param(cr, uid, 'oe.autobackup.copy_folder', config.folder)
+        return True
+
+    def set_user_id(self, cr, uid, ids, context=None):
+        config = self.browse(cr, uid, ids)[0]
+        self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'user_id', config.user_id.id)
+        return True
+
+    def set_notification_mode(self, cr, uid, ids, context=None):
+        config = self.browse(cr, uid, ids)[0]
+        self.pool.get('ir.values').set_default(cr, uid, 'oe.autobackup', 'notification_mode', config.notification_mode)
         return True
 
     def default_get(self, cr, uid, fields, context=None):
         res = super(oe_autobackup_config, self).default_get(cr, uid, fields, context=context)
         res.update(self._defaults)
         ir_values_obj = self.pool.get('ir.values')
-        for field, ftype in [("frequency", int), ("history_count", int), ("folder", str), ("copy_folder", str)]:
+        for field, ftype in [("frequency", int), ("history_count", int), ("folder", str), ("copy_folder", str), ("notification_mode", str), ("user_id", int)]:
             res[field] = ir_values_obj.get_default(cr, uid, 'oe.autobackup', field)
         res['backup_ids'] = self.pool.get('oe.autobackup').search(cr, uid, [])
         return res
@@ -83,17 +89,6 @@ class oe_autobackup_config(osv.TransientModel):
     def execute(self, cr, uid, data, context=None):
         _logger.debug("Create CONFIG called: %s" % data)
         return super(oe_autobackup_config, self).execute(cr, uid, data, context=context)
-
-def exec_pg_command_pipe(name, *args):
-    prog = tools.find_pg_tool(name)
-    if not prog:
-        raise Exception('Couldn\'t find %s' % name)
-    # on win32, passing close_fds=True is not compatible
-    # with redirecting std[in/err/out]
-    pop = subprocess.Popen((prog,) + args, bufsize= -1,
-          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-          close_fds=(os.name=="posix"))
-    return pop.stdin, pop.stdout
 
 class oe_autobackup_file(osv.TransientModel):
     _name = "oe.autobackup.file"
@@ -105,7 +100,8 @@ class oe_autobackup_file(osv.TransientModel):
     }
 
     def get_files(self, cr, uid, autobackup_id, folder):
-        files = glob.glob(os.path.join(folder, "*.dump"))
+        _logger.debug("Scanning %s for path %s" % (folder, "%s_*.dump" % cr.dbname))
+        files = glob.glob(os.path.join(folder, "%s_*.dump" % cr.dbname))
         files.sort(key=os.path.getmtime, reverse=True)
         res = []
         for f in files:
@@ -121,6 +117,123 @@ class oe_autobackup_file(osv.TransientModel):
             res.append(file_id)
         return res
 
+def exec_command_pipe(name, *args):
+    """Cloned from tools/misc.py. 
+       Modified to return the popen object instead of stdin and stdout
+       to allow later calling of popen.wait to cleanup child"""
+    prog = tools.find_in_path(name)
+    if not prog:
+        raise Exception('Couldn\'t find %s' % name)
+    # on win32, passing close_fds=True is not compatible
+    # with redirecting std[in/err/out]
+    pop = subprocess.Popen((prog,) + args, bufsize= -1,
+          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+          close_fds=(os.name=="posix"))
+    return pop
+
+class FileCopy:
+    def __init__(self, urlparsed, dbname):
+        self.options = []
+        self.urlparsed = urlparsed
+        self.dbname = dbname
+
+    def set_options(self, options):
+        self.options = options[:]
+
+    def initialize(self):
+        raise NotImplemented()
+
+    def copy(self, fromfile, tofile):
+        raise NotImplemented()
+
+    def rotate(self, folder, howmany):
+        raise NotImplemented()
+
+class LocalFileCopy(FileCopy):
+    def initialize(self):
+        path = os.path.join(self.options['basepath'], self.dbname)
+        if not os.path.isdir(path):
+            os.mkdir(path)
+
+    def copy(self, fromfile, tofile):
+        shutil.copy(fromfile, tofile)
+
+    def rotate(self, folder, howmany):
+        files = glob.glob(os.path.join(folder, "%s_*.dump" % self.dbname))
+        files.sort(key=os.path.getmtime, reverse=True)
+        _logger.debug("Found previous dumps of %s to keep: %s" % (howmany, files))
+        for f in files[howmany:]:
+            _logger.debug("removing file: %s" % f)
+            os.unlink(f)
+
+class FTPFileCopy(FileCopy):
+    def initialize(self):
+        if not ftplib_installed:
+            raise Exception("Cannot use ftp. Missing required dependency to allow ftp: ftplib. Please install ftplib")
+
+class SCPFileCopy(FileCopy):
+    def initialize(self):
+        if not paramiko_installed:
+            raise Exception("Cannot use scp. Missing required dependency to allow scp: paramiko. Please install paramiko")
+
+class RSyncFileCopy(FileCopy):
+    def copy(self, fromfile, tofile):
+        pass
+
+class SFTPFileCopy(FileCopy):
+    def __init__(self, urlparsed):
+        self.port = urlparsed.port or 22
+        self.host = urlparsed.host or 'localhost'
+        self.username = urlparsed.username
+        self.password = urlparsed.password
+        self.pkey = None
+
+    def set_options(self, options):
+        pass
+
+    def initialize(self):
+        if not paramiko_installed:
+            raise Exception("Cannot use scp. Missing required dependency to allow scp: paramiko. Please install paramiko")
+
+    def copy(self, fromfile, tofile):
+        transport = paramiko.Transport((self.host, self.port))
+        connect_params = {
+            'username': self.username,
+            'host': self.host,
+        }
+        if self.password:
+            connect_params['password'] = self.password
+        if self.pkey:
+            connect_params['pkey'] = self.pkey
+        transport.connect(**connect_params)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        sftp.put(fromfile, tofile)
+        sftp.close()
+        transport.close()
+
+def parse_external_folder(folder):
+    fc = None
+    parsed = urlparse(folder)
+    if not parsed.scheme and not parsed.hostname: 
+        # standard copy
+        fc = LocalFileCopy(parsed)
+    if parsed.scheme in KNOWN_SCHEME:
+        fc = KNOWN_SCHEME[parsed.scheme](parsed)
+    else:
+        raise Exception("Unknown copy method in url: %s" % folder)
+    return fc
+
+def exec_pg_command_pipe(name, *args):
+    prog = tools.find_pg_tool(name)
+    if not prog:
+        raise Exception('Couldn\'t find %s' % name)
+    # on win32, passing close_fds=True is not compatible
+    # with redirecting std[in/err/out]
+    pop = subprocess.Popen((prog,) + args, bufsize= -1,
+          stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+          close_fds=(os.name=="posix"))
+    return pop
+
 class oe_autobackup(osv.Model):
     _name = "oe.autobackup"
 
@@ -135,18 +248,24 @@ class oe_autobackup(osv.Model):
     _rec_name = "name"
     _columns = {
         'name': fields.char('Name', required=True),
+        'dbname': fields.char('DBName', required=True),
+        'dump_extra_params': fields.char('Dump Extra Parameters'),
         'frequency': fields.integer("Backup Frequency", required=True),
-        'frequency_type': fields.selection( freq_type, 'Frequency Unit', required=True),
-        'history_count': fields.integer("Backup History"),
+        'frequency_type': fields.selection( FREQ_TYPE, 'Frequency Unit', required=True),
+        'history_count': fields.integer("Backup History", help="Number of backup file to keep. 0 to disable rotation"),
         'folder': fields.char('Main Backup Folder', required=True),
         'copy_folder': fields.char('External Backup Folder'),
         'cron_id': fields.many2one('ir.cron', 'Cron Job', help="Scheduler which process the request", readonly=True),
         'last_run_date': fields.datetime("Last Run Date", readonly=True),
+        'last_state': fields.selection([('draft', 'Never Executed'), ('ok', 'Success'), ('ko', 'Failed')], 'Status', readonly=True),
+        'user_id': fields.many2one('res.users', string='Notify to', ondelete='restrict'),
+        'notification_mode':fields.selection(NOTIFICATION_MODES, "Notification Mode"),
         'backup_files': fields.function(_get_backup_files, type='one2many', relation="oe.autobackup.file", string="Files", readonly=True),
         'active': fields.boolean("Active"),
     }
     _defaults = {
         'active': True,
+        'last_state': 'draft',
     }
     _sql_constraints = [
         ('name_uniq', 'unique(name)', 'Backup Already Defined'),
@@ -158,6 +277,9 @@ class oe_autobackup(osv.Model):
             os.mkdir(path)
 
     def create(self, cr, uid, data, context=None):
+        if 'dbname' not in data:
+            data['dbname'] = cr.dbname
+        _logger.debug("Creating backup job: %s" % data)
         backupjob_id = super(oe_autobackup, self).create(cr, uid, data, context=context)
         self._init_folder_struct(data['folder'], data['name'])
         if 'copy_folder' in data and data['copy_folder']:
@@ -188,7 +310,8 @@ class oe_autobackup(osv.Model):
         cron_obj = self.pool.get('ir.cron')
         cron_data = self.read(cr, uid, ids, fields=["cron_id"])
         cron_ids = [ c['cron_id'][0] for c in cron_data if 'cron_id' in c and c['cron_id']]
-        cron_obj.unlink(cr, uid, cron_ids)
+        if cron_ids:
+            cron_obj.unlink(cr, uid, cron_ids)
         return super(oe_autobackup, self).unlink(cr, uid, ids, context=context) 
         
     def write(self, cr, uid, ids, vals, context=None):
@@ -210,42 +333,69 @@ class oe_autobackup(osv.Model):
             self.pool.get("ir.cron").write(cr, uid, [c['cron_id'][0] for c in cron_ids], cron_data)
         return res
 
-    def _rotate(self, folder, howmany):
-        files = glob.glob(os.path.join(folder, "*.dump"))
+    def _rotate(self, dbname, folder, howmany):
+        files = glob.glob(os.path.join(folder, "%s_*.dump" % dbname))
         files.sort(key=os.path.getmtime, reverse=True)
         _logger.debug("Found previous dumps of %s to keep: %s" % (howmany, files))
         for f in files[howmany:]:
             _logger.debug("removing file: %s" % f)
             os.unlink(f)
 
+    def send_email(self, cr, uid, ids, res, error_message, context=None):
+        _logger.debug("Send email called: %s %s" % (res, error_message))
+        ir_model_data = self.pool.get('ir.model.data')
+        template_id = ir_model_data.get_object_reference(cr, uid, 'oe_autobackups', 'email_template_edi_oe_autobackup')[1]
+        email_obj = self.pool.get('email.template').send_mail(cr, uid, template_id, ids[0], force_send=True, context=context)
+        _logger.debug("Email: %s" % email_obj)
+
     def run(self, cr, uid, ids, context=None):
+        """Safe run with error management"""
+        res = False
+        error_message = ''
+        config = self.browse(cr, uid, ids)[0]
+        try:
+            res = self._run(cr, uid, ids, context=context)
+            _logger.debug("Run finished: %s" % res)
+        except Exception, ex:
+            _logger.exception("Autobackup %s (%s) exception" % (config.name, config.last_run_date), ex)
+            error_message = str(ex)
+        status = 'ok' if res else 'ko'
+        self.write(cr, uid, ids, {
+            'last_state': status
+        })
+        if config.notification_mode == 'always' or  status == 'ko':
+            self.send_email(cr, uid, ids, res, error_message, context=context)
+        return res
+
+    def _run(self, cr, uid, ids, context=None):
         config = self.browse(cr, uid, ids)[0]
         _logger.debug("Running dump with config: %s" % config)
+        dbname = config.dbname or cr.dbname
         self.write(cr, uid, ids, {
             'last_run_date': fields.datetime.now()
         })
-
         filename = "%(db)s_%(timestamp)s.dump" % {
-                'db': cr.dbname,
+                'db': dbname,
                 'timestamp': datetime.datetime.utcnow().strftime(
                     "%Y-%m-%d_%H-%M-%SZ")
                 }
         dump_filename = os.path.join(config.folder, config.name, filename)
-        data = self.do_dump(cr.dbname, tools.config['admin_passwd'])
-        _logger.info('Scheduled Autobackup %s successful: %s', (config.name, cr.dbname))
+        data = self.do_dump(dbname, tools.config['admin_passwd'], config.dump_extra_params)
+        _logger.info('Scheduled Autobackup %s successful: %s', (config.name, dbname))
         fp = open(dump_filename, "w")
         fp.write(data)
         fp.close()
         _logger.debug("Created Dump filename: %s" % dump_filename)
         if config.copy_folder:
-            copy_filename = os.path.join(config.copy_folder, config.name, '%s.last.dump' % cr.dbname)
+            copy_filename = os.path.join(config.copy_folder, config.name, '%s.last.dump' % dbname)
             shutil.copy(dump_filename, copy_filename)
         if config.history_count:
-            self._rotate(os.path.join(config.folder, config.name), config.history_count)
+            self._rotate(dbname, os.path.join(config.folder, config.name), config.history_count)
         return True
 
-    def do_dump(self, db_name, password):
+    def do_dump(self, db_name, password, extra_params=None):
         os.environ['PGPASSWORD'] = password
+        #cmd = [os.path.join(tools.config['pg_path'], 'pg_dump'), '--format=c', '--no-owner']
         cmd = ['pg_dump', '--format=c', '--no-owner']
         if tools.config['db_user']:
             cmd.append('--username=' + tools.config['db_user'])
@@ -253,11 +403,16 @@ class oe_autobackup(osv.Model):
             cmd.append('--host=' + tools.config['db_host'])
         if tools.config['db_port']:
             cmd.append('--port=' + str(tools.config['db_port']))
+        if extra_params:
+            cmd.extend(extra_params.split())
         cmd.append(db_name)
-        stdin, stdout = exec_pg_command_pipe(*tuple(cmd))
+        _logger.debug("Executing dump command: %s" % ' '.join(cmd))
+        pop = exec_pg_command_pipe(*tuple(cmd))
+        stdin, stdout = pop.stdin, pop.stdout
         stdin.close()
         data = stdout.read()
         res = stdout.close()
+        pop.wait()
         if not data or res:
             _logger.error(
                     'DUMP DB: %s failed! Please verify the configuration of the database password on the server. '
