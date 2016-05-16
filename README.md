@@ -13,6 +13,10 @@ Mandatories:
 
 - Main Backup Folder: 
     A valid path on the server used to store backups files
+- Backup Frequency: 
+    Backup frequency (integer)
+- Frequency Unit: 
+    Unit of measure of backup frequency (available: Minutes, Hours, Days, Weeks, Months)
 
 Optionals:
 
@@ -20,10 +24,10 @@ Optionals:
     A valid path on the server used to store only the last backup (planned scp/ftp support)
 - Backup History: 
     Number of backups to keep
-- Backup Frequency: 
-    Backup frequency (integer)
-- Frequency Unit: 
-    Unit of measure of backup frequency (available: Minutes, Hours, Days, Weeks, Months)
+- Notifications: 
+    - User
+    - Mode (always or on failure)
+
 
 ### Backup Jobs
 
