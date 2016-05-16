@@ -2,7 +2,7 @@
 
 {
 	'name': 'OE AUTOBACKUPS',
-	'version': '0.3',
+	'version': '0.4',
 	'category': 'Tools',
 	'description': """
 Auto Backup Manager
@@ -10,9 +10,11 @@ Auto Backup Manager
 	'author': 'Antonio Verni (me.verni@gmail.com)',
         'website': 'www.linkedin.com/in/averni',
 	#'license': 'MIT',
-	'depends': [],
+	'depends': ["email_template"],
 	'data': [
+            'security/ir.model.access.csv',
             'views/oe_autobackup_view.xml',
+            'edi/oe_autobackup_data.xml',
         ],
 	'css' : [],
 	'demo': [],
