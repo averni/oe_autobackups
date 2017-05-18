@@ -1,12 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <openerp>
     <data>
+        <record id="view_oe_autobackup_restore_view" model="ir.ui.view">
+            <field name="name">oe.autobackup.restore.form</field>
+            <field name="model">oe.autobackup.restore</field>
+            <field name="arch" type="xml">
+                <form string="Restore Backup" version="7.0" >
+                    <div>
+                        <field name="message" readonly="1"/>
+                    </div>
+                    <group col="4">
+                        <field name="filename" readonly="1"/>
+                        <field name="dbname" />
+                    </group>
+                    <footer>
+                        <group>
+                            <button name="restore" string="Restore" type="object" class="oe_highlight"/> or
+                            <button string="Cancel" class="oe_link" special="cancel" />
+                        </group>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_oe_autobackup_restore" model="ir.actions.act_window">
+            <field name="name">Restore backups</field>
+            <field name="res_model">oe.autobackup.restore</field>
+            <field name="view_type">form</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+        </record>
 
         <record model="ir.ui.view" id="view_oe_autobackup_files_tree">
             <field name="name">oe.autobackup.file.tree</field>
             <field name="model">oe.autobackup.file</field>
             <field name="arch" type="xml">
                 <tree string="Files" toolbar="1">
+                    <field name="id" invisible="1"/>
                     <field name="full_name" />
                     <field name="create_time"/>
                     <field name="size" />
@@ -45,6 +75,7 @@
                         <field name="frequency" />
                         <field name="frequency_type" />
                         <field name="history_count" colspan="4"/>
+                        <field name="cron_nextcall" />
                         <field name="last_run_date" />
                         <field name="folder" invisible="1"/>
                         <field name="copy_folder" invisible="1"/>
@@ -54,12 +85,20 @@
                         <field name="notification_mode" />
                     </group>
                     <group col="2">
-                        <field name="backup_files" />
+                        <field name="backup_files" >
+                            <tree string="Files" toolbar="1">
+                                <field name="id" invisible="1"/>
+                                <field name="full_name" />
+                                <field name="create_time"/>
+                                <field name="size" />
+                                <button name="restore" string="Restore" type="object" class="oe_highlight" icon="terp-gtk-jump-to-ltr"/>
+                            </tree>
+                        </field>
                     </group>
                 </form>
             </field>
         </record>
- 
+
         <record id="view_oe_autobackup_config_view" model="ir.ui.view">
             <field name="name">Autobackup Configurations</field>
             <field name="model">oe.autobackup.config</field>
