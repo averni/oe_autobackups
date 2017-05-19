@@ -303,27 +303,27 @@ class oe_autobackup(osv.Model):
         ids = ids if isinstance(ids, list) else [ids]
         data = self.read(cr, uid, ids[0])
         cron_name = 'autobackup_%s' % data['name']
-        cron_id = self.pool.get('ir.cron').search(cr, uid, [('name', '=', cron_name )])
         #nextcall = fields.datetime.context_timestamp(cr, uid, datetime.datetime.strptime(time.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT), tools.DEFAULT_SERVER_DATETIME_FORMAT))
         nextcall = datetime.datetime.strptime(time.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT), tools.DEFAULT_SERVER_DATETIME_FORMAT)
         _logger.debug("CALL: %s" % nextcall)
         nextcall = nextcall + _intervalTypes[data['frequency_type']](data['frequency'])
         _logger.debug("NEXT CALL: %s" % nextcall)
-        #if not cron_id:
-        cron_id = self.pool.get('ir.cron').create(cr, uid, {
-            'name': cron_name,
-            'model':'oe.autobackup', 
-            'args': repr([[ids[0]]]), 
-            'function':'run', 
-            'priority':6, 
-            'interval_number': data['frequency'],
-            'interval_type': data['frequency_type'],
-            'numbercall': 1,
-            'doall': 1,
-            'user_id':uid,
-            'nextcall': nextcall,
-        })
-        """
+        cron_id = self.pool.get('ir.cron').search(cr, uid, [('name', '=', cron_name )])
+        if not cron_id:
+            cron_id = self.pool.get('ir.cron').create(cr, uid, {
+                'name': cron_name,
+                'model':'oe.autobackup', 
+                'args': repr([[ids[0]]]), 
+                'function':'run', 
+                'priority':6, 
+                'interval_number': data['frequency'],
+                'interval_type': data['frequency_type'],
+                'numbercall': -1,
+                'doall': 1,
+                'user_id':uid,
+                'nextcall': nextcall,
+                'active': data['active'],
+            })
         else:
             cron_id = cron_id[0]
             self.pool.get('ir.cron').write(cr, uid, [cron_id], {
@@ -331,18 +331,18 @@ class oe_autobackup(osv.Model):
                 'args': repr([[ids[0]]]), 
                 'interval_number': data['frequency'],
                 'interval_type': data['frequency_type'],
-                'numbercall': 1,
+                'numbercall': -1,
                 'doall': 1,
                 'user_id':uid,
                 'nextcall': nextcall,
+                'active': data['active'],
             })
-        """
         self.write(cr, uid, ids, {
             'cron_id': cron_id
         })
-        _logger.debug("Cleaning old schedules")
-        oldcron_ids = self.pool.get('ir.cron').search(cr, uid, [('name', '=', cron_name ), ('active', '=', False)])
-        self.pool.get('ir.cron').unlink(cr, uid, oldcron_ids)
+        #_logger.debug("Cleaning old schedules")
+        #oldcron_ids = self.pool.get('ir.cron').search(cr, uid, [('name', '=', cron_name ), ('active', '=', False)])
+        #self.pool.get('ir.cron').unlink(cr, uid, oldcron_ids)
 
     def create(self, cr, uid, data, context=None):
         #if 'dbname' not in data:
@@ -365,17 +365,14 @@ class oe_autobackup(osv.Model):
         
     def write(self, cr, uid, ids, vals, context=None):
         res = super(oe_autobackup, self).write(cr, uid, ids, vals, context=context)
-        if 'frequency' in vals or 'frequency_type' in vals or 'name' in vals:
-            cron_data = {}
-            if 'frequency' in vals or 'frequency_type' in vals:
-                self.schedule(cr, uid, ids)
-            if 'name' in vals:
-                cron_data['name'] = 'autobackup_%s' % vals['name']
-                folders_data = self.read(cr, uid, ids, fields=["folder", "copy_folder"])
-                folder = folders_data[0]['folder'] if len(folders_data) else ''
-                copy_folder = folders_data[0]['copy_folder'] if len(folders_data) else ''
-                self._init_folder_struct(folder, vals['name'])
-                self._init_folder_struct(copy_folder, vals['name'])
+        if 'frequency' in vals or 'frequency_type' in vals or 'active' in vals:
+            self.schedule(cr, uid, ids)
+        if 'name' in vals:
+            folders_data = self.read(cr, uid, ids, fields=["folder", "copy_folder"])
+            folder = folders_data[0]['folder'] if len(folders_data) else ''
+            copy_folder = folders_data[0]['copy_folder'] if len(folders_data) else ''
+            self._init_folder_struct(folder, vals['name'])
+            self._init_folder_struct(copy_folder, vals['name'])
         return res
 
     def _rotate(self, dbname, folder, howmany):
@@ -403,6 +400,10 @@ class oe_autobackup(osv.Model):
         if config.state == 'running':
             _logger.warn("Autobackup %s already running: %s" % (config.name, config.last_run_date))
             return
+        if config.last_run_date > config.cron_nextcall:
+            _logger.warn("Autobackup %s called wrong: %s > %s" % (config.name, config.last_run_date, config.cron_nextcall))
+            return
+
         try:
             self.write(new_cr, uid, ids, {
                 'state': 'running',
@@ -428,8 +429,8 @@ class oe_autobackup(osv.Model):
             'state': 'notrunning'
         })
         new_cr.commit()
-        _logger.debug("Scheduling next call")
-        self.schedule(cr, uid, ids)
+        #_logger.debug("Scheduling next call")
+        #self.schedule(cr, uid, ids)
         return 
 
     def _run(self, cr, uid, ids, context=None):

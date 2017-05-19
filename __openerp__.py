@@ -2,7 +2,7 @@
 
 {
 	'name': 'OE AUTOBACKUPS',
-	'version': '0.7',
+	'version': '0.8',
 	'category': 'Tools',
 	'description': """
 Auto Backup Manager

@@ -51,11 +51,13 @@
                 <tree string="Autobackups" toolbar="1">
                     <field name="name" />
                     <field name="last_run_date" />
+                    <field name="cron_nextcall" />
                     <field name="frequency"/>
                     <field name="frequency_type" />
                     <field name="history_count"/>
                     <field name="folder"/>
                     <field name="copy_folder"/>
+                    <field name="active"/>
                 </tree>
             </field>
         </record> 
@@ -77,6 +79,7 @@
                         <field name="history_count" colspan="4"/>
                         <field name="cron_nextcall" />
                         <field name="last_run_date" />
+                        <field name="active"/>
                         <field name="folder" invisible="1"/>
                         <field name="copy_folder" invisible="1"/>
                     </group>
@@ -137,6 +140,7 @@
             <field name="res_model">oe.autobackup</field>
             <field name="view_type">form</field>
             <field name="view_mode">tree,form</field>
+            <field name="context">{'active_test':False}</field>
         </record>
 
         <menuitem id="base.menu_oe_autobackup" name="Autobackup" parent="base.menu_config" sequence="16" />
