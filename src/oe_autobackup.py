@@ -235,7 +235,6 @@ def exec_pg_command_pipe(name, *args):
         raise Exception('Couldn\'t find %s' % name)
     # on win32, passing close_fds=True is not compatible
     # with redirecting std[in/err/out]
-    _logger.info("Exeuting PIPE command: %s" % ' '.join((prog,) + args))
     try:
         pop = subprocess.Popen((prog,) + args, bufsize=1,
           stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -305,9 +304,7 @@ class oe_autobackup(osv.Model):
         cron_name = 'autobackup_%s' % data['name']
         #nextcall = fields.datetime.context_timestamp(cr, uid, datetime.datetime.strptime(time.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT), tools.DEFAULT_SERVER_DATETIME_FORMAT))
         nextcall = datetime.datetime.strptime(time.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT), tools.DEFAULT_SERVER_DATETIME_FORMAT)
-        _logger.debug("CALL: %s" % nextcall)
         nextcall = nextcall + _intervalTypes[data['frequency_type']](data['frequency'])
-        _logger.debug("NEXT CALL: %s" % nextcall)
         cron_id = self.pool.get('ir.cron').search(cr, uid, [('name', '=', cron_name )])
         if not cron_id:
             cron_id = self.pool.get('ir.cron').create(cr, uid, {
@@ -429,13 +426,11 @@ class oe_autobackup(osv.Model):
             'state': 'notrunning'
         })
         new_cr.commit()
-        #_logger.debug("Scheduling next call")
-        #self.schedule(cr, uid, ids)
         return 
 
     def _run(self, cr, uid, ids, context=None):
         config = self.browse(cr, uid, ids)[0]
-        _logger.info("Running dump with config: %s %s" % (config.last_run_date, config.cron_id.nextcall))
+        _logger.debug("Running dump with config: %s %s" % (config.last_run_date, config.cron_id.nextcall))
         dbname = cr.dbname
         filename = "%(db)s_%(timestamp)s.dump" % {
                 'db': dbname,
@@ -533,7 +528,6 @@ class oe_autobackup_restore(osv.TransientModel):
         stdin, stdout = pop.stdin, pop.stdout
         stdin.close()
         output = stdout.read()
-        _logger.info("STDOUT: %s %s" % (output, os.environ))
         res = stdout.close()
         if res:
             raise Exception("Couldn't restore database: %s" % output)
